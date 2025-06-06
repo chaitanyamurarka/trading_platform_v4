@@ -50,14 +50,14 @@ graph TD
         G["Database<br>(MySQL/PostgreSQL)"]
     end
 
-    A -- "1. API Request (Load Chart)" --> B
-    B -- "2. Check Cache" --> E
-    B -- "3. Fetch 1s Data<br>(if cache miss)" --> F
-    F -- "4. Return 1s Data" --> B
-    B -- "5. Store Data in Cache" --> E
-    B -- "6. Launch Background Task" --> C
-    B -- "7. Return Initial Chart Data" --> A
-    A -- "8. Lazy Load Request" --> B
+    A -- "API Request (Load Chart)" --> B
+    B -- "Check Cache" --> E
+    B -- "Fetch 1s Data (if cache miss)" --> F
+    F -- "Return 1s Data" --> B
+    B -- "Store Data in Cache" --> E
+    B -- "Launch Background Task" --> C
+    B -- "Return Initial Chart Data" --> A
+    A -- "Lazy Load Request" --> B
     C -- "Processes background tasks" --> E
     D -- "Ensures connection is live" --> F
 
