@@ -3,19 +3,6 @@ historical_data_service.py
 
 This service handles all logic related to fetching, processing, and caching
 historical OHLC (Open, High, Low, Close) data.
-
-Key Features:
-- Multi-layer Caching:
-  - Caches raw 1-second data fetched from the data provider (DTN IQFeed).
-  - Caches resampled data for various intervals (e.g., 1m, 5m, 1h).
-- On-Demand Resampling: If cached data for a specific interval is not available,
-  it's generated on-the-fly from the base 1-second data using a high-performance
-  Numba kernel.
-- Background Pre-aggregation: After a user's initial request, a background task
-  is triggered to pre-emptively resample and cache data for all other standard
-  intervals, ensuring subsequent requests for the same time range are extremely fast.
-- Session-Based Caching: Caches are tied to a user's session to manage data
-  and resources effectively.
 """
 
 import logging
@@ -37,13 +24,11 @@ from ..dtn_iq_client import get_iqfeed_history_conn
 from ..tasks.data_processing_tasks import resample_and_cache_all_intervals_task
 
 # --- Constants ---
-# Maps user-facing interval strings to their duration in seconds for resampling calculations.
 INTERVAL_SECONDS_MAP = {
     "1s": 1, "5s": 5, "10s": 10, "15s": 15, "30s": 30, "45s": 45,
     "1m": 60, "5m": 300, "10m": 600, "15m": 900,
     "30m": 1800, "45m": 2700, "1h": 3600
 }
-# The number of candles to return in the initial chart load.
 INITIAL_FETCH_LIMIT = 5000
 
 # --- Helper Functions ---
@@ -65,17 +50,14 @@ def _parse_and_filter_dtn_data(
     if api_response_data.size == 0:
         return []
 
-    # Combine date and time fields to create a single timestamp array.
-    if 'time' in api_response_data.dtype.names:  # Intraday data
+    if 'time' in api_response_data.dtype.names:
         timestamps_dt64 = api_response_data['date'] + api_response_data['time']
-    else:  # Daily data
+    else:
         timestamps_dt64 = api_response_data['date']
 
-    # Create NumPy datetime64 objects for efficient filtering.
     start_time_np = np.datetime64(start_time.replace(tzinfo=None))
     end_time_np = np.datetime64(end_time.replace(tzinfo=None))
 
-    # Filter the data to the requested time range.
     mask = (timestamps_dt64 >= start_time_np) & (timestamps_dt64 <= end_time_np)
     filtered_data = api_response_data[mask]
 
@@ -83,21 +65,36 @@ def _parse_and_filter_dtn_data(
         logging.info(f"No data remains for {trading_symbol} after time filtering.")
         return []
 
-    # Efficiently convert filtered data to a list of dicts for Pydantic validation.
     python_timestamps = pd.to_datetime(timestamps_dt64[mask], utc=True).to_pydatetime()
-    candle_dicts = [
-        {
+    
+    # --- BUG FIX START ---
+    # The original code used `rec.get()`, which is a dictionary method, on a NumPy record (`rec`).
+    # This caused the `AttributeError`. The corrected code below iterates through the records
+    # and safely checks for the existence of volume fields (`prd_vlm` or `tot_vlm`)
+    # in the NumPy dtype before accessing them.
+
+    candle_dicts = []
+    dtype_names = filtered_data.dtype.names
+    for ts, rec in zip(python_timestamps, filtered_data):
+        volume = 0.0
+        if 'prd_vlm' in dtype_names:
+            volume = float(rec['prd_vlm'])
+        elif 'tot_vlm' in dtype_names:
+            volume = float(rec['tot_vlm'])
+        
+        candle_dicts.append({
             "timestamp": ts,
             "open": float(rec['open_p']),
             "high": float(rec['high_p']),
             "low": float(rec['low_p']),
             "close": float(rec['close_p']),
-            "volume": float(rec.get('prd_vlm', rec.get('tot_vlm', 0)))
-        }
-        for ts, rec in zip(python_timestamps, filtered_data)
-    ]
+            "volume": volume
+        })
+    # --- BUG FIX END ---
 
-    # Bulk-validate the list of dicts into Pydantic models.
+    if not candle_dicts:
+        return []
+
     candle_adapter = TypeAdapter(List[schemas.CandleBase])
     return candle_adapter.validate_python(candle_dicts)
 
@@ -110,7 +107,6 @@ def _fetch_from_dtn_iq_api(
 ) -> List[schemas.CandleBase]:
     """
     Fetches historical data directly from the DTN IQFeed API.
-    This is the lowest-level data retrieval function.
     """
     logging.info(f"Fetching from DTN IQFeed for {trading_symbol}, Interval: {interval_val}, Range: {start_time} to {end_time}")
     hist_conn = get_iqfeed_history_conn()
@@ -120,8 +116,6 @@ def _fetch_from_dtn_iq_api(
 
     try:
         with iq.ConnConnector([hist_conn]):
-            # For any intraday request, we always fetch the highest resolution data (1-second)
-            # and then resample it. This simplifies caching and ensures consistency.
             api_response_data = hist_conn.request_bars_in_period(
                 ticker=trading_symbol,
                 interval_len=1,
@@ -158,7 +152,6 @@ def _get_and_prepare_1s_data_for_range(
     fetching from the DTN API as a fallback.
     """
     all_1s_candles = []
-    # Create a list of daily cache keys to check for existing 1s data.
     date_range = pd.date_range(start_time.date(), end_time.date())
     daily_cache_keys = [f"1s_data:{exchange}:{token}:{day.strftime('%Y-%m-%d')}" for day in date_range]
     
@@ -177,7 +170,6 @@ def _get_and_prepare_1s_data_for_range(
             missing_dates.append(day)
 
     if missing_dates:
-        # Fetch data for all missing dates in a single API call for efficiency.
         fetch_start = datetime.combine(min(missing_dates), datetime.min.time())
         fetch_end = datetime.combine(max(missing_dates), datetime.max.time())
         
@@ -185,7 +177,6 @@ def _get_and_prepare_1s_data_for_range(
         
         if newly_fetched_data:
             all_1s_candles.extend(newly_fetched_data)
-            # Group the newly fetched data by day to cache it correctly.
             new_data_df = pd.DataFrame([c.model_dump() for c in newly_fetched_data])
             new_data_df['timestamp'] = pd.to_datetime(new_data_df['timestamp'])
             new_data_df['date_key'] = new_data_df['timestamp'].dt.strftime('%Y-%m-%d')
@@ -195,14 +186,12 @@ def _get_and_prepare_1s_data_for_range(
                 date_str = day.strftime('%Y-%m-%d')
                 day_cache_key = f"1s_data:{exchange}:{token}:{date_str}"
                 day_df = new_data_df[new_data_df['date_key'] == date_str]
-                # Convert timestamps to ISO format string for JSON serialization.
                 records_to_cache = day_df.to_dict(orient='records')
                 for record in records_to_cache:
                     record['timestamp'] = record['timestamp'].isoformat()
                 pipe.set(day_cache_key, json.dumps(records_to_cache), ex=CACHE_EXPIRATION_SECONDS)
             pipe.execute()
 
-    # Sort and filter the combined data to the user's precise time range.
     all_1s_candles.sort(key=lambda c: c.timestamp)
     start_ts = start_time.replace(tzinfo=timezone.utc)
     end_ts = end_time.replace(tzinfo=timezone.utc)
@@ -218,8 +207,7 @@ def get_initial_historical_data(
     end_time: datetime,
 ) -> schemas.HistoricalDataResponse:
     """
-    Main entry point for fetching historical data. It orchestrates caching,
-    data fetching, resampling, and background task submission.
+    Main entry point for fetching historical data.
     """
     request_id = _build_request_id(session_token, exchange, token, start_time, end_time)
     target_data_key = f"{request_id}:{interval_val}"
@@ -236,13 +224,11 @@ def get_initial_historical_data(
         if interval_val == "1s":
             full_data = base_1s_candles
         else:
-            # Resample the 1s data to the requested interval.
             aggregation_seconds = INTERVAL_SECONDS_MAP.get(interval_val)
             if not aggregation_seconds:
                 raise HTTPException(status_code=400, detail=f"Unsupported interval for resampling: {interval_val}")
 
             timestamps_1s_np = np.array([c.timestamp.timestamp() for c in base_1s_candles], dtype=np.float64)
-            # Create other numpy arrays for open, high, low, close, volume...
             open_1s_np = np.array([c.open for c in base_1s_candles], dtype=np.float64)
             high_1s_np = np.array([c.high for c in base_1s_candles], dtype=np.float64)
             low_1s_np = np.array([c.low for c in base_1s_candles], dtype=np.float64)
@@ -253,19 +239,17 @@ def get_initial_historical_data(
                 timestamps_1s_np, open_1s_np, high_1s_np, low_1s_np, close_1s_np, volume_1s_np, aggregation_seconds
             )
             
-            resampled_candles = []
-            for i in range(num_bars):
-                resampled_candles.append(schemas.Candle(
+            resampled_candles = [
+                schemas.Candle(
                     timestamp=datetime.fromtimestamp(ts_agg[i], tz=timezone.utc),
                     open=o_agg[i], high=h_agg[i], low=l_agg[i], close=c_agg[i], volume=v_agg[i]
-                ))
+                ) for i in range(num_bars)
+            ]
             full_data = resampled_candles
 
         if full_data:
-            # Cache the newly generated data.
             set_cached_ohlc_data(target_data_key, full_data, expiration=3600)
             
-            # Trigger background task to pre-aggregate other intervals.
             task_triggered_key = f"{request_id}:task_triggered"
             if not redis_client.get(task_triggered_key):
                 base_data_key_for_task = f"temp_1s_data:{uuid.uuid4()}"
@@ -279,7 +263,6 @@ def get_initial_historical_data(
                 )
                 redis_client.set(task_triggered_key, "true", ex=3600)
 
-    # Prepare and return the response to the user.
     total_available = len(full_data)
     initial_offset = max(0, total_available - INITIAL_FETCH_LIMIT)
     candles_to_send = full_data[initial_offset:]
@@ -306,7 +289,6 @@ def get_historical_data_chunk(
         raise HTTPException(status_code=404, detail="Data for this request not found or has expired.")
 
     total_available = len(full_data)
-    # Ensure offset is valid.
     if offset < 0 or offset >= total_available:
         return schemas.HistoricalDataChunkResponse(candles=[], offset=offset, limit=limit, total_available=total_available)
         

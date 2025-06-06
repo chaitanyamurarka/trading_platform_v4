@@ -10,7 +10,7 @@ celery_application = Celery(
     "trading_platform_tasks", # A name for your Celery application
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=['app.tasks.optimization_tasks',
+    include=[ # Temporily removed the 'app.tasks.optimization_tasks',
              'app.tasks.cache_cleanup_tasks',
              'app.tasks.data_processing_tasks'] # Added the new task module
 )

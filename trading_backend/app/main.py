@@ -19,7 +19,8 @@ from fastapi.staticfiles import StaticFiles
 
 # Import application components
 from .dtn_iq_client import launch_iqfeed_service_if_needed
-from .core import strategy_loader
+# Temporily Commenting this
+# from .core import strategy_loader
 from .services.live_data_feed_service import live_feed_service
 from .routers import historical_data_router, utility_router
 
@@ -89,7 +90,8 @@ async def startup_event():
     # This is a critical prerequisite for fetching market data.
     launch_iqfeed_service_if_needed()
     # Pre-load all available strategies from the 'strategies' directory.
-    strategy_loader.load_strategies()
+    # Temporily Commenting
+    # strategy_loader.load_strategies()
     logging.info("Application startup complete.")
 
 
