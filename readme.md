@@ -35,19 +35,19 @@ The platform is composed of several key components that work together to deliver
 ```mermaid
 graph TD
     subgraph "User's Browser"
-        A[Frontend UI<br>(index.html, JS, CSS)]
+        A["Frontend UI<br>(index.html, JS, CSS)"]
     end
 
     subgraph "Backend Services"
-        B[FastAPI Server<br>(main.py, routers)]
-        C[Celery Workers<br>(tasks/*.py)]
-        D[IQFeed Keep-Alive<br>(iqfeed_keep_alive.py)]
+        B["FastAPI Server<br>(main.py, routers)"]
+        C["Celery Workers<br>(tasks/*.py)"]
+        D["IQFeed Keep-Alive<br>(iqfeed_keep_alive.py)"]
     end
 
     subgraph "Infrastructure"
-        E[Redis<br>(Cache & Celery Broker)]
-        F[DTN IQFeed Client<br>(IQConnect.exe)]
-        G[Database<br>(MySQL/PostgreSQL)]
+        E["Redis<br>(Cache & Celery Broker)"]
+        F["DTN IQFeed Client<br>(IQConnect.exe)"]
+        G["Database<br>(MySQL/PostgreSQL)"]
     end
 
     A -- "1. API Request (Load Chart)" --> B
