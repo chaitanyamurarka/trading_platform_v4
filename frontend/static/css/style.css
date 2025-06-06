@@ -1,0 +1,51 @@
+/**
+ * file: style.css
+ * purpose: Provides custom styling for the trading chart application. These styles
+ * complement or override the default styles from Tailwind CSS and DaisyUI,
+ * focusing on chart-specific and notification elements.
+ */
+
+/* Sets a default, modern sans-serif font for the application body. */
+body {
+    font-family: 'Inter', sans-serif;
+}
+
+/**
+ * Chart Container Styling
+ * Ensures the chart container has rounded corners consistent with the UI theme
+ * and that the chart itself does not overflow these corners.
+ */
+#chartContainer {
+    border-radius: 0.5rem; /* Corresponds to DaisyUI 'rounded-box' class */
+    overflow: hidden;      /* Prevents the chart from drawing outside the rounded corners */
+}
+
+/**
+ * Toast Notification Styling
+ * Defines a standard set of styles for toast notifications (pop-up messages).
+ * Toasts are used to provide feedback to the user (e.g., success, error, info).
+ */
+.toast {
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
+    padding: 1rem;
+    border-radius: 0.375rem;
+    color: white;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+    min-width: 200px;
+    text-align: center;
+}
+
+/* Controls the visibility of the toast, making it fade in. */
+.toast.show {
+    opacity: 1;
+}
+
+/* Color definitions for different types of toasts. */
+.toast-success { background-color: #10b981; } /* Green for success messages */
+.toast-error   { background-color: #ef4444; } /* Red for error messages */
+.toast-warning { background-color: #f59e0b; } /* Amber for warning messages */
+.toast-info    { background-color: #3b82f6; } /* Blue for informational messages */

@@ -1,0 +1,29 @@
+# --- Core Web Framework ---
+fastapi                 # High-performance web framework for building APIs.
+uvicorn[standard]       # ASGI server to run the FastAPI application.
+
+# --- Data and Database ---
+sqlalchemy              # SQL Toolkit and Object Relational Mapper (ORM).
+pymysql                 # MySQL driver for SQLAlchemy.
+redis                   # Client library for Redis (used for caching and Celery).
+numba                   # JIT compiler for accelerating Python numerical functions.
+
+# --- Asynchronous Task Queue ---
+celery                  # Distributed task queue for background processing.
+eventlet                # Concurrency library, can be used as a Celery worker pool.
+
+# --- Configuration and Utilities ---
+pydantic                # Data validation and settings management.
+pydantic_settings       # Pydantic extension for loading settings from files/env vars.
+python-dotenv           # Reads key-value pairs from a .env file and sets them as environment variables.
+
+# --- Authentication (Optional but recommended for future use) ---
+passlib[bcrypt]         # Library for password hashing.
+python-jose[cryptography] # JWT library for token-based authentication.
+pyotp                   # Library for generating and verifying one-time passwords.
+
+# --- Third-Party Service Integration ---
+NorenRestApi            # Client for Noren Rest API (if used).
+
+# --- Windows-Specific Dependencies ---
+pywin32                 # Windows API access, may be req
